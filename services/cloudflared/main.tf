@@ -10,6 +10,10 @@ data "external" "it_tools_ip" {
   program = ["${path.module}/../../scripts/get_it_tools_ip.sh"]
 }
 
+data "external" "grafana_ip" {
+  program = ["${path.module}/../../scripts/get_grafana_ip.sh"]
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared" "homelab" {
   account_id = "a1d47b88a31b30932d1974da0a55e80e"
   name       = "homelab"
@@ -68,10 +72,11 @@ resource "null_resource" "cloudflared_credentials" {
     tunnel_id   = cloudflare_zero_trust_tunnel_cloudflared.homelab.id
     homepage_ip = data.external.homepage_ip.result.ip
     it_tools_ip = data.external.it_tools_ip.result.ip
+    grafana_ip  = data.external.grafana_ip.result.ip
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/../../scripts/write_cloudflared_config.sh ${cloudflare_zero_trust_tunnel_cloudflared.homelab.id} ${var.tunnel_secret} ${data.external.homepage_ip.result.ip} ${data.external.it_tools_ip.result.ip}"
+    command = "${path.module}/../../scripts/write_cloudflared_config.sh ${cloudflare_zero_trust_tunnel_cloudflared.homelab.id} ${var.tunnel_secret} ${data.external.homepage_ip.result.ip} ${data.external.it_tools_ip.result.ip} ${data.external.grafana_ip.result.ip}"
   }
 }
 
@@ -100,4 +105,32 @@ resource "docker_container" "cloudflared" {
   }
 
   restart = "unless-stopped"
+}
+
+resource "cloudflare_record" "grafana" {
+  zone_id = var.cloudflare_zone_id
+  name    = "grafana"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+}
+
+resource "cloudflare_zero_trust_access_application" "grafana" {
+  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
+  name             = "Grafana"
+  domain           = "grafana.nuga.dev"
+  type             = "self_hosted"
+  session_duration = "24h"
+}
+
+resource "cloudflare_zero_trust_access_policy" "grafana" {
+  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
+  application_id = cloudflare_zero_trust_access_application.grafana.id
+  name           = "Allow hunternuga293"
+  precedence     = 1
+  decision       = "allow"
+
+  include {
+    email = ["hunternuga293@gmail.com"]
+  }
 }

@@ -8,6 +8,9 @@ DIRS=(
   "$HOMELAB_DIR/network"
   "$HOMELAB_DIR/services/homepage"
   "$HOMELAB_DIR/services/it-tools"
+  "$HOMELAB_DIR/services/cadvisor"
+  "$HOMELAB_DIR/services/prometheus"
+  "$HOMELAB_DIR/services/grafana"
   "$HOMELAB_DIR/services/cloudflared"
 )
 
@@ -15,6 +18,9 @@ DIRS=(
 CONTAINERS=(
   "homepage"
   "it-tools"
+  "cadvisor"
+  "prometheus"
+  "grafana"
   "cloudflared"
 )
 
@@ -46,6 +52,12 @@ destroy_terraform() {
   terraform destroy -auto-approve -input=false
 }
 
+network_in_state() {
+  cd "$HOMELAB_DIR/network"
+  terraform init -upgrade -input=false -no-color 2>/dev/null
+  terraform state list 2>/dev/null | grep -q "docker_network.homelab"
+}
+
 ensure_network() {
   echo ""
   echo "========================================="
@@ -56,23 +68,27 @@ ensure_network() {
   dns_enabled=$(podman network inspect homelab --format '{{.DNSEnabled}}' 2>/dev/null || echo "missing")
 
   if [[ "$dns_enabled" == "missing" ]]; then
-    echo "Network not found, creating with DNS disabled..."
+    echo "Network not found — creating with DNS disabled..."
     podman network create --disable-dns homelab
-    cd "$HOMELAB_DIR/network"
-    terraform init -upgrade -input=false
-    terraform import docker_network.homelab homelab
   elif [[ "$dns_enabled" == "true" ]]; then
     echo "Network has DNS enabled — recreating with DNS disabled..."
     for container in "${CONTAINERS[@]}"; do
       podman rm -f "$container" 2>/dev/null || true
     done
-    podman network rm homelab 2>/dev/null || true
+    podman network rm -f homelab 2>/dev/null || true
     podman network create --disable-dns homelab
-    cd "$HOMELAB_DIR/network"
-    terraform init -upgrade -input=false
-    terraform import docker_network.homelab homelab
   else
     echo "Network OK (DNS disabled)."
+  fi
+
+  # Always ensure network is in Terraform state
+  cd "$HOMELAB_DIR/network"
+  terraform init -upgrade -input=false
+  if ! terraform state list 2>/dev/null | grep -q "docker_network.homelab"; then
+    echo "Importing network into Terraform state..."
+    terraform import docker_network.homelab homelab
+  else
+    echo "Network already in Terraform state."
   fi
 }
 
@@ -101,6 +117,11 @@ ensure_homepage_config() {
     - IT Tools:
         href: https://tools.nuga.dev
         description: Developer utilities toolkit
+
+- Monitoring:
+    - Grafana:
+        href: https://grafana.nuga.dev
+        description: Metrics and dashboards
 EOF
   fi
 
@@ -165,6 +186,7 @@ case "${1:-apply}" in
     echo "Deploy complete!"
     echo "  homepage  -> https://homepage.nuga.dev"
     echo "  it-tools  -> https://tools.nuga.dev"
+    echo "  grafana   -> https://grafana.nuga.dev"
     ;;
 
   destroy)
