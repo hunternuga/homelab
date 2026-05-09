@@ -7,7 +7,15 @@ HOMELAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIRS=(
   "$HOMELAB_DIR/network"
   "$HOMELAB_DIR/services/homepage"
+  "$HOMELAB_DIR/services/it-tools"
   "$HOMELAB_DIR/services/cloudflared"
+)
+
+# Container names to clean up before apply (avoids Podman netavark conflicts)
+CONTAINERS=(
+  "homepage"
+  "it-tools"
+  "cloudflared"
 )
 
 run_terraform() {
@@ -38,25 +46,125 @@ destroy_terraform() {
   terraform destroy -auto-approve -input=false
 }
 
+ensure_network() {
+  echo ""
+  echo "========================================="
+  echo " Checking homelab network"
+  echo "========================================="
+
+  local dns_enabled
+  dns_enabled=$(podman network inspect homelab --format '{{.DNSEnabled}}' 2>/dev/null || echo "missing")
+
+  if [[ "$dns_enabled" == "missing" ]]; then
+    echo "Network not found, creating with DNS disabled..."
+    podman network create --disable-dns homelab
+    cd "$HOMELAB_DIR/network"
+    terraform init -upgrade -input=false
+    terraform import docker_network.homelab homelab
+  elif [[ "$dns_enabled" == "true" ]]; then
+    echo "Network has DNS enabled — recreating with DNS disabled..."
+    for container in "${CONTAINERS[@]}"; do
+      podman rm -f "$container" 2>/dev/null || true
+    done
+    podman network rm homelab 2>/dev/null || true
+    podman network create --disable-dns homelab
+    cd "$HOMELAB_DIR/network"
+    terraform init -upgrade -input=false
+    terraform import docker_network.homelab homelab
+  else
+    echo "Network OK (DNS disabled)."
+  fi
+}
+
+ensure_homepage_config() {
+  echo ""
+  echo "========================================="
+  echo " Checking homepage config"
+  echo "========================================="
+
+  local config_dir="$HOMELAB_DIR/services/homepage/config"
+
+  if [[ ! -d "$config_dir" ]]; then
+    echo "Config directory missing — creating..."
+    mkdir -p "$config_dir"
+  fi
+
+  if [[ ! -f "$config_dir/services.yaml" ]]; then
+    echo "services.yaml missing — creating default..."
+    cat > "$config_dir/services.yaml" << EOF
+- Infrastructure:
+    - Homepage:
+        href: https://homepage.nuga.dev
+        description: Homelab dashboard
+
+- Tools:
+    - IT Tools:
+        href: https://tools.nuga.dev
+        description: Developer utilities toolkit
+EOF
+  fi
+
+  if [[ ! -f "$config_dir/settings.yaml" ]]; then
+    echo "settings.yaml missing — creating default..."
+    cat > "$config_dir/settings.yaml" << EOF
+title: nuga homelab
+allowedHosts:
+  - homepage.nuga.dev
+EOF
+  fi
+
+  if [[ ! -f "$config_dir/widgets.yaml" ]]; then
+    echo "widgets.yaml missing — creating default..."
+    cat > "$config_dir/widgets.yaml" << EOF
+- resources:
+    cpu: true
+    memory: true
+    disk: /
+
+- search:
+    provider: duckduckgo
+    target: _blank
+EOF
+  fi
+
+  if [[ ! -f "$config_dir/bookmarks.yaml" ]]; then
+    echo "bookmarks.yaml missing — creating empty..."
+    touch "$config_dir/bookmarks.yaml"
+  fi
+
+  echo "Homepage config OK."
+}
+
 case "${1:-apply}" in
   apply)
     echo "Deploying homelab..."
+
+    ensure_network
+    ensure_homepage_config
+
     for dir in "${DIRS[@]}"; do
-      # Clean up any existing containers to avoid Podman netavark conflicts
-      if [[ "$dir" == *"homepage"* ]]; then
-        echo ""
-        echo "Cleaning up existing homepage container if present..."
-        podman rm -f homepage 2>/dev/null || true
+      # Skip network dir since we handle it in ensure_network
+      if [[ "$dir" == *"network"* ]]; then
+        run_terraform "$dir"
+        continue
       fi
-      if [[ "$dir" == *"cloudflared"* ]]; then
-        echo ""
-        echo "Cleaning up existing cloudflared container if present..."
-        podman rm -f cloudflared 2>/dev/null || true
-      fi
+
+      # Clean up containers to avoid Podman netavark conflicts
+      for container in "${CONTAINERS[@]}"; do
+        if [[ "$dir" == *"$container"* ]]; then
+          echo ""
+          echo "Cleaning up existing $container container if present..."
+          podman rm -f "$container" 2>/dev/null || true
+        fi
+      done
+
       run_terraform "$dir"
     done
+
     echo ""
-    echo "Deploy complete! homepage.nuga.dev should be live shortly."
+    echo "Deploy complete!"
+    echo "  homepage  -> https://homepage.nuga.dev"
+    echo "  it-tools  -> https://tools.nuga.dev"
     ;;
 
   destroy)
@@ -65,13 +173,16 @@ case "${1:-apply}" in
       destroy_terraform "${DIRS[$(( ${#DIRS[@]} - 1 - $dir ))]}"
     done
     echo ""
+    echo "Cleaning up homelab network..."
+    podman network rm -f homelab 2>/dev/null || true
+    echo ""
     echo "All resources destroyed."
     ;;
 
   plan)
     echo "Planning homelab..."
     for dir in "${DIRS[@]}"; do
-      local name=$(basename "$dir")
+      name=$(basename "$dir")
       echo ""
       echo "========================================="
       echo " Plan: $name"

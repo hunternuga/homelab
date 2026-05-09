@@ -1,9 +1,9 @@
 - Infrastructure:
     - Homepage:
         href: https://homepage.nuga.dev
-        description: Homelab Dashboard
+        description: Homelab dashboard
 
 - Tools:
     - IT Tools:
         href: https://tools.nuga.dev
-        description: Developer Utilities Toolkit
+        description: Developer utilities toolkit

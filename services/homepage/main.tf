@@ -7,10 +7,6 @@ resource "docker_image" "homepage" {
   keep_locally = true
 }
 
-resource "docker_volume" "homepage_config" {
-  name = "homepage_config"
-}
-
 resource "docker_container" "homepage" {
   name  = "homepage"
   image = docker_image.homepage.image_id
@@ -25,7 +21,7 @@ resource "docker_container" "homepage" {
   }
 
   volumes {
-    volume_name    = docker_volume.homepage_config.name
+    host_path      = abspath("${path.module}/config")
     container_path = "/app/config"
   }
 
