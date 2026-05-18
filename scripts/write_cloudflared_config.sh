@@ -5,8 +5,9 @@ TUNNEL_SECRET=$2
 HOMEPAGE_IP=$3
 IT_TOOLS_IP=$4
 GRAFANA_IP=$5
+MINEPANEL_IP=$6
 
-podman run --rm -v cloudflared_config:/etc/cloudflared alpine sh -c "
+docker run --rm -v cloudflared_config:/etc/cloudflared alpine sh -c "
 cat > /etc/cloudflared/${TUNNEL_ID}.json << EOF
 {
   \"AccountTag\": \"a1d47b88a31b30932d1974da0a55e80e\",
@@ -25,6 +26,10 @@ ingress:
     service: http://${IT_TOOLS_IP}:80
   - hostname: grafana.nuga.dev
     service: http://${GRAFANA_IP}:3000
+  - hostname: minepanel.nuga.dev
+    service: http://${MINEPANEL_IP}:3000
+  - hostname: minepanel-api.nuga.dev
+    service: http://${MINEPANEL_IP}:8091
   - service: http_status:404
 EOF
 "

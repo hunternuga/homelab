@@ -12,3 +12,8 @@
     - Grafana:
         href: https://grafana.nuga.dev
         description: Metrics and dashboards
+
+- Gaming:
+    - MinePanel:
+        href: https://minepanel.nuga.dev
+        description: Minecraft server manager

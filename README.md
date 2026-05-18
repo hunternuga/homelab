@@ -4,11 +4,12 @@ A self-hosted homelab stack managed with Terraform, running containerized servic
 
 ## Stack
 
-- **Container runtime** — Podman (Docker-compatible)
+- **Container runtime** — Docker Desktop (Mac) / Docker Engine (Linux)
 - **Infrastructure as code** — Terraform with the [kreuzwerker Docker provider](https://registry.terraform.io/providers/kreuzwerker/docker/latest)
 - **Tunnel** — Cloudflare Zero Trust Tunnel (`cloudflared`)
 - **Auth** — Cloudflare Access (email-based OTP + passkey support)
 - **Monitoring** — Prometheus + cAdvisor + Grafana
+- **Gaming** — MinePanel (Minecraft server management)
 
 ---
 
@@ -19,6 +20,8 @@ A self-hosted homelab stack managed with Terraform, running containerized servic
 | Homepage | [homepage.nuga.dev](https://homepage.nuga.dev) | Homelab dashboard | Public |
 | IT Tools | [tools.nuga.dev](https://tools.nuga.dev) | Developer utilities toolkit | Cloudflare Access |
 | Grafana | [grafana.nuga.dev](https://grafana.nuga.dev) | Metrics and dashboards | Cloudflare Access |
+| MinePanel | [minepanel.nuga.dev](https://minepanel.nuga.dev) | Minecraft server management | Cloudflare Access |
+| MinePanel API | [minepanel-api.nuga.dev](https://minepanel-api.nuga.dev) | MinePanel backend API | JWT (bypass) |
 | Prometheus | Internal only | Metrics scraping | None |
 | cAdvisor | Internal only | Container metrics collection | None |
 
@@ -29,7 +32,7 @@ A self-hosted homelab stack managed with Terraform, running containerized servic
 Before you begin, make sure you have the following installed:
 
 - [Terraform](https://developer.hashicorp.com/terraform/install) `>= 1.0`
-- [Podman](https://podman.io/docs/installation) with a running machine (`podman machine start`)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Mac/Windows) or Docker Engine (Linux)
 - A [Cloudflare](https://cloudflare.com) account with a domain configured
 - A Cloudflare API token with the following permissions:
   - **Account → Cloudflare Tunnel → Edit**
@@ -44,18 +47,19 @@ Before you begin, make sure you have the following installed:
 homelab/
 ├── deploy.sh                          # One-command deploy/destroy/plan script
 ├── scripts/
-│   ├── get_homepage_ip.sh             # Dynamic container IP resolver
+│   ├── get_homepage_ip.sh             # Dynamic container IP resolvers
 │   ├── get_it_tools_ip.sh
 │   ├── get_grafana_ip.sh
 │   ├── get_prometheus_ip.sh
 │   ├── get_cadvisor_ip.sh
+│   ├── get_minepanel_ip.sh
 │   └── write_cloudflared_config.sh   # Writes tunnel credentials + ingress config
 ├── network/
 │   ├── main.tf                        # Shared Docker network
 │   └── versions.tf
 └── services/
     ├── homepage/
-    │   ├── config/                    # Homepage config files (persisted, not in volume)
+    │   ├── config/                    # Homepage config files (persisted via bind mount)
     │   │   ├── services.yaml
     │   │   ├── settings.yaml
     │   │   ├── widgets.yaml
@@ -78,19 +82,27 @@ homelab/
     ├── grafana/
     │   ├── provisioning/
     │   │   ├── dashboards/
-    │   │   │   ├── dashboards.yaml    # Dashboard provisioning config
+    │   │   │   ├── dashboards.yaml
     │   │   │   └── cadvisor.json      # Exported dashboard JSON
     │   │   └── datasources/
-    │   │       └── prometheus.yaml    # Prometheus data source config
+    │   │       └── prometheus.yaml
     │   ├── main.tf
     │   ├── versions.tf
     │   └── outputs.tf
+    ├── minepanel/
+    │   ├── data/                      # MinePanel data (persisted via bind mount)
+    │   │   └── servers/               # Minecraft server data
+    │   ├── main.tf
+    │   ├── versions.tf
+    │   ├── variables.tf
+    │   ├── outputs.tf
+    │   └── terraform.tfvars          # MinePanel secrets (never commit)
     └── cloudflared/
         ├── main.tf                    # Cloudflare Tunnel + ingress + Access policies
         ├── versions.tf
         ├── variables.tf
         ├── outputs.tf
-        └── terraform.tfvars          # Your secrets (never commit this)
+        └── terraform.tfvars          # Cloudflare secrets (never commit)
 ```
 
 ---
@@ -100,19 +112,13 @@ homelab/
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/youruser/homelab.git
+git clone https://github.com/hunternuga/homelab.git
 cd homelab
 ```
 
-### 2. Configure Podman socket
+### 2. Install Docker Desktop
 
-Find your Podman socket path:
-
-```bash
-podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'
-```
-
-Update the `host` field in each service's `versions.tf` with this path.
+Download and install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and make sure it's running before deploying.
 
 ### 3. Make scripts executable
 
@@ -131,7 +137,15 @@ cloudflare_zone_id   = "your-zone-id-here"
 tunnel_secret        = "$(openssl rand -base64 32)"
 ```
 
-> **Never commit `terraform.tfvars` to version control.** It is listed in `.gitignore`.
+Edit `services/minepanel/terraform.tfvars`:
+
+```hcl
+jwt_secret     = "$(openssl rand -base64 32)"
+admin_username = "admin"
+admin_password = "your-password-here"
+```
+
+> **Never commit `terraform.tfvars` files to version control.** They are listed in `.gitignore`.
 
 ### 5. Deploy
 
@@ -140,10 +154,10 @@ tunnel_secret        = "$(openssl rand -base64 32)"
 ```
 
 This will:
-1. Create the shared Podman network with DNS disabled
-2. Deploy homepage, IT Tools, cAdvisor, Prometheus, and Grafana
-3. Create the Cloudflare Tunnel, push ingress rules, create DNS records, and start cloudflared
-4. Set up Cloudflare Access policies for protected services
+1. Create the shared Docker network
+2. Deploy all services in order
+3. Create the Cloudflare Tunnel, DNS records, and Access policies
+4. Write the cloudflared config with all ingress rules
 
 ---
 
@@ -164,58 +178,53 @@ This will:
 
 ## Adding a New Service
 
-1. Create a new directory under `services/`:
-
-```
-services/
-└── myservice/
-    ├── main.tf
-    ├── versions.tf
-    └── outputs.tf
-```
-
-2. Add an IP script under `scripts/`:
-
-```bash
-#!/bin/bash
-ip=$(podman inspect myservice --format '{{.NetworkSettings.Networks.homelab.IPAddress}}')
-echo "{\"ip\": \"$ip\"}"
-```
-
-3. Add the service to the deploy order in `deploy.sh` before cloudflared.
-
-4. Add a new ingress rule to `write_cloudflared_config.sh` and a new argument for the IP.
-
-5. Add DNS record and optionally a Cloudflare Access policy in `services/cloudflared/main.tf`.
-
-6. Update `null_resource.cloudflared_credentials` triggers and provisioner command in `cloudflared/main.tf` to pass the new IP.
-
-7. Run `./deploy.sh`.
+1. Create a new directory under `services/`
+2. Add an IP script under `scripts/get_<service>_ip.sh`
+3. Add the service to `DIRS` and `CONTAINERS` in `deploy.sh` before cloudflared
+4. Add a new ingress rule to `write_cloudflared_config.sh`
+5. Add DNS record and optionally a Cloudflare Access policy in `services/cloudflared/main.tf`
+6. Update `null_resource.cloudflared_credentials` triggers and provisioner command in `cloudflared/main.tf`
+7. Run `./deploy.sh`
 
 ---
 
 ## Monitoring
 
-Grafana is pre-provisioned with a cAdvisor dashboard showing:
+Grafana is pre-provisioned with a cAdvisor dashboard showing CPU, memory, network traffic, and container uptime. Access it at [grafana.nuga.dev](https://grafana.nuga.dev).
 
-- CPU usage per container
-- Memory usage per container
-- Network traffic (sent/received) per container
-- Container info and uptime
+> **Note:** After a redeploy, update the Prometheus data source URL in Grafana with the new container IP:
+> ```bash
+> docker inspect prometheus --format '{{.NetworkSettings.Networks.homelab.IPAddress}}'
+> ```
 
-Access it at [grafana.nuga.dev](https://grafana.nuga.dev) — login with the admin credentials set in `services/grafana/main.tf`.
+Also update `services/prometheus/config/prometheus.yml` with the new cAdvisor IP after each redeploy, then restart Prometheus:
+```bash
+docker restart prometheus
+```
 
-> **Note:** After a redeploy, update the Prometheus data source URL in Grafana with the new container IP. This is a known limitation of running Podman rootless on macOS and will be resolved on the Linux migration.
+---
+
+## Gaming
+
+MinePanel is accessible at [minepanel.nuga.dev](https://minepanel.nuga.dev) behind Cloudflare Access. It supports:
+
+- Java and Bedrock Minecraft servers
+- Modpack installation via CurseForge and Modrinth (API key required)
+- Real-time server metrics and logs
+- Automatic backups
+
+Server data is persisted in `services/minepanel/data/servers/` on the host.
 
 ---
 
 ## Notes
 
-- **Mac users** — Closing the laptop lid will suspend Podman and drop the tunnel. Use [Amphetamine](https://apps.apple.com/us/app/amphetamine/id937984704) to keep the Mac awake with the lid closed, and enable **System Settings → Battery → Options → Prevent automatic sleeping when the display is off**.
-- **Linux users** — No special configuration needed. Services will run 24/7 as long as the machine is on. Container name DNS resolution will also work natively, eliminating the IP-based routing workarounds.
+- **Docker Desktop required on Mac** — Docker Desktop handles all networking natively, unlike Podman which has rootless limitations on Mac.
+- **Linux users** — Docker Engine works natively with no special configuration needed.
 - Cloudflare Tunnel handles all external HTTPS — no port forwarding or firewall rules needed.
 - Homepage config files are stored as bind mounts and persist across deploys.
 - Grafana dashboards are provisioned from JSON files in the repo and persist across deploys.
+- MinePanel server data is stored as a bind mount and persists across deploys.
 
 ---
 
@@ -223,10 +232,21 @@ Access it at [grafana.nuga.dev](https://grafana.nuga.dev) — login with the adm
 
 **502 Bad Gateway** — A container's IP changed after a restart. Run `./deploy.sh` to pick up the new IPs automatically.
 
-**Tunnel shows as inactive** — Check cloudflared logs: `podman logs cloudflared`. Ensure the credentials file exists in the volume.
+**Tunnel shows as inactive** — Check cloudflared logs: `docker logs cloudflared`. Ensure the credentials file exists in the volume:
+```bash
+docker run --rm -v cloudflared_config:/etc/cloudflared alpine cat /etc/cloudflared/config.yml
+```
 
-**Grafana shows no data** — Update the Prometheus data source URL with the current Prometheus container IP: `podman inspect prometheus --format '{{.NetworkSettings.Networks.homelab.IPAddress}}'`
+**Grafana shows no data** — Update the Prometheus data source URL with the current IP:
+```bash
+docker inspect prometheus --format '{{.NetworkSettings.Networks.homelab.IPAddress}}'
+```
 
-**Container networking issues after redeploy** — The deploy script handles this automatically by removing containers before applying. If issues persist, run `podman network rm -f homelab` and re-run `./deploy.sh`.
+**Network already exists error** — Run:
+```bash
+docker network rm homelab
+cd network && terraform state rm docker_network.homelab && cd ..
+./deploy.sh
+```
 
-**Network already exists error** — Run `cd network && terraform import docker_network.homelab homelab && cd .. && ./deploy.sh`.
+**MinePanel can't create servers** — Ensure Docker socket is mounted correctly and `BASE_DIR` points to a valid host path that Docker Desktop can access.
