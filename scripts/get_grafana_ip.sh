@@ -1,3 +1,3 @@
 #!/bin/bash
-ip=$(podman inspect grafana --format '{{.NetworkSettings.Networks.homelab.IPAddress}}')
+ip=$(docker inspect grafana --format '{{.NetworkSettings.Networks.homelab.IPAddress}}')
 echo "{\"ip\": \"$ip\"}"

@@ -1,3 +1,3 @@
 #!/bin/bash
-ip=$(podman inspect homepage --format '{{.NetworkSettings.Networks.homelab.IPAddress}}')
+ip=$(docker inspect homepage --format '{{.NetworkSettings.Networks.homelab.IPAddress}}')
 echo "{\"ip\": \"$ip\"}"

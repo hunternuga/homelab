@@ -11,16 +11,17 @@ DIRS=(
   "$HOMELAB_DIR/services/cadvisor"
   "$HOMELAB_DIR/services/prometheus"
   "$HOMELAB_DIR/services/grafana"
+  "$HOMELAB_DIR/services/minepanel"
   "$HOMELAB_DIR/services/cloudflared"
 )
 
-# Container names to clean up before apply (avoids Podman netavark conflicts)
 CONTAINERS=(
   "homepage"
   "it-tools"
   "cadvisor"
   "prometheus"
   "grafana"
+  "minepanel"
   "cloudflared"
 )
 
@@ -52,33 +53,17 @@ destroy_terraform() {
   terraform destroy -auto-approve -input=false
 }
 
-network_in_state() {
-  cd "$HOMELAB_DIR/network"
-  terraform init -upgrade -input=false -no-color 2>/dev/null
-  terraform state list 2>/dev/null | grep -q "docker_network.homelab"
-}
-
 ensure_network() {
   echo ""
   echo "========================================="
   echo " Checking homelab network"
   echo "========================================="
 
-  local dns_enabled
-  dns_enabled=$(podman network inspect homelab --format '{{.DNSEnabled}}' 2>/dev/null || echo "missing")
-
-  if [[ "$dns_enabled" == "missing" ]]; then
-    echo "Network not found — creating with DNS disabled..."
-    podman network create --disable-dns homelab
-  elif [[ "$dns_enabled" == "true" ]]; then
-    echo "Network has DNS enabled — recreating with DNS disabled..."
-    for container in "${CONTAINERS[@]}"; do
-      podman rm -f "$container" 2>/dev/null || true
-    done
-    podman network rm -f homelab 2>/dev/null || true
-    podman network create --disable-dns homelab
+  if ! docker network inspect homelab > /dev/null 2>&1; then
+    echo "Network not found — creating..."
+    docker network create homelab
   else
-    echo "Network OK (DNS disabled)."
+    echo "Network OK."
   fi
 
   # Always ensure network is in Terraform state
@@ -122,6 +107,11 @@ ensure_homepage_config() {
     - Grafana:
         href: https://grafana.nuga.dev
         description: Metrics and dashboards
+
+- Gaming:
+    - MinePanel:
+        href: https://minepanel.nuga.dev
+        description: Minecraft server manager
 EOF
   fi
 
@@ -170,12 +160,12 @@ case "${1:-apply}" in
         continue
       fi
 
-      # Clean up containers to avoid Podman netavark conflicts
+      # Clean up containers to avoid conflicts
       for container in "${CONTAINERS[@]}"; do
         if [[ "$dir" == *"$container"* ]]; then
           echo ""
           echo "Cleaning up existing $container container if present..."
-          podman rm -f "$container" 2>/dev/null || true
+          docker rm -f "$container" 2>/dev/null || true
         fi
       done
 
@@ -184,9 +174,10 @@ case "${1:-apply}" in
 
     echo ""
     echo "Deploy complete!"
-    echo "  homepage  -> https://homepage.nuga.dev"
-    echo "  it-tools  -> https://tools.nuga.dev"
-    echo "  grafana   -> https://grafana.nuga.dev"
+    echo "  homepage   -> https://homepage.nuga.dev"
+    echo "  it-tools   -> https://tools.nuga.dev"
+    echo "  grafana    -> https://grafana.nuga.dev"
+    echo "  minepanel  -> https://minepanel.nuga.dev"
     ;;
 
   destroy)
@@ -196,7 +187,7 @@ case "${1:-apply}" in
     done
     echo ""
     echo "Cleaning up homelab network..."
-    podman network rm -f homelab 2>/dev/null || true
+    docker network rm homelab 2>/dev/null || true
     echo ""
     echo "All resources destroyed."
     ;;
