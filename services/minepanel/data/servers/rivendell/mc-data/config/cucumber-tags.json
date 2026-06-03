@@ -1,0 +1,6 @@
+{
+  "__comment": "Instructions: https://blakesmods.com/docs/cucumber/tags-config",
+  "forge:ingots/graphite": "bigreactors:graphite_ingot",
+  "forge:dusts/saltpeter": "railcraft:saltpeter_dust",
+  "forge:dusts/niter": "chemlib:potassium_nitrate_dust"
+}
