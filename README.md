@@ -10,6 +10,7 @@ A self-hosted homelab stack managed with Terraform, running containerized servic
 - **Auth** — Cloudflare Access (email-based OTP + passkey support)
 - **Monitoring** — Prometheus + cAdvisor + Grafana
 - **Gaming** — MinePanel (Minecraft server management)
+- **CI/CD** — GitHub Actions with a self-hosted runner (push to main auto-deploys)
 
 ---
 
@@ -173,6 +174,42 @@ This will:
 # Tear down all services
 ./deploy.sh destroy
 ```
+
+---
+
+## CI/CD
+
+Pushes to `main` automatically deploy the homelab via a self-hosted GitHub Actions runner on your Mac. Pull requests trigger `terraform plan` so you can review changes before merging.
+
+### One-time runner setup
+
+**1. Store secrets outside the repo** (the runner checks out a clean copy, so gitignored files won't be present):
+
+```bash
+mkdir -p ~/.homelab-secrets
+cp services/cloudflared/terraform.tfvars ~/.homelab-secrets/cloudflared.tfvars
+cp services/minepanel/terraform.tfvars ~/.homelab-secrets/minepanel.tfvars
+```
+
+Keep `~/.homelab-secrets/` updated whenever you rotate credentials.
+
+**2. Register a self-hosted runner**
+
+Go to your GitHub repo → **Settings → Actions → Runners → New self-hosted runner**, select **macOS**, and follow the download + configuration steps. When prompted for labels, the default is fine.
+
+**3. Install and start the runner as a service** (auto-starts on login):
+
+```bash
+cd ~/actions-runner
+./svc.sh install
+./svc.sh start
+```
+
+**4. Verify** — push a commit to `main` and watch the Actions tab.
+
+### Manual trigger
+
+You can also trigger a deploy from the GitHub UI: **Actions → Deploy Homelab → Run workflow**.
 
 ---
 

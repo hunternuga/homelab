@@ -1,0 +1,44 @@
+name: Deploy Homelab
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Prevent concurrent deploys — queue rather than cancel
+concurrency:
+  group: homelab-deploy
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Terraform Plan
+    if: github.event_name == 'pull_request'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore secrets
+        run: |
+          cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
+          cp ~/.homelab-secrets/minepanel.tfvars services/minepanel/terraform.tfvars
+
+      - name: Plan
+        run: ./deploy.sh plan
+
+  deploy:
+    name: Deploy
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore secrets
+        run: |
+          cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
+          cp ~/.homelab-secrets/minepanel.tfvars services/minepanel/terraform.tfvars
+
+      - name: Deploy
+        run: ./deploy.sh
