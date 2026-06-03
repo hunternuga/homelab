@@ -56,25 +56,22 @@ destroy_terraform() {
 ensure_network() {
   echo ""
   echo "========================================="
-  echo " Checking homelab network"
+  echo " Resetting homelab network"
   echo "========================================="
 
-  if ! docker network inspect homelab > /dev/null 2>&1; then
-    echo "Network not found — creating..."
-    docker network create homelab
-  else
-    echo "Network OK."
-  fi
-
-  # Always ensure network is in Terraform state
   cd "$HOMELAB_DIR/network"
   terraform init -upgrade -input=false
-  if ! terraform state list 2>/dev/null | grep -q "docker_network.homelab"; then
-    echo "Importing network into Terraform state..."
-    terraform import docker_network.homelab homelab
-  else
-    echo "Network already in Terraform state."
-  fi
+
+  # Clear stale state so apply never tries to diff/replace a stuck network
+  terraform state rm docker_network.homelab 2>/dev/null || true
+
+  # Remove and recreate the Docker network fresh
+  docker network rm homelab 2>/dev/null || true
+  docker network create homelab
+
+  # Import and apply
+  terraform import docker_network.homelab homelab
+  terraform apply -auto-approve -input=false
 }
 
 ensure_homepage_config() {
@@ -150,26 +147,22 @@ case "${1:-apply}" in
   apply)
     echo "Deploying homelab..."
 
-    ensure_network
     ensure_homepage_config
 
+    # Tear down all containers before touching the network
+    echo ""
+    echo "========================================="
+    echo " Cleaning up existing containers"
+    echo "========================================="
+    for container in "${CONTAINERS[@]}"; do
+      docker network disconnect homelab "$container" 2>/dev/null || true
+      docker rm -f "$container" 2>/dev/null || true
+    done
+
+    # Reset network cleanly now that no containers are attached
+    ensure_network
+
     for dir in "${DIRS[@]}"; do
-      # Skip network dir since we handle it in ensure_network
-      if [[ "$dir" == *"network"* ]]; then
-        run_terraform "$dir"
-        continue
-      fi
-
-      # Clean up containers to avoid conflicts
-      for container in "${CONTAINERS[@]}"; do
-        if [[ "$dir" == *"$container"* ]]; then
-          echo ""
-          echo "Cleaning up existing $container container if present..."
-          docker network disconnect homelab "$container" 2>/dev/null || true
-          docker rm -f "$container" 2>/dev/null || true
-        fi
-      done
-
       run_terraform "$dir"
     done
 
