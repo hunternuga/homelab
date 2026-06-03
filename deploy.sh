@@ -3,6 +3,7 @@
 set -e
 
 HOMELAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_DIR="$HOME/.homelab-state"
 
 DIRS=(
   "$HOMELAB_DIR/network"
@@ -24,6 +25,38 @@ CONTAINERS=(
   "minepanel"
   "cloudflared"
 )
+
+restore_state() {
+  [[ ! -d "$STATE_DIR" ]] && return 0
+  echo ""
+  echo "========================================="
+  echo " Restoring Terraform state"
+  echo "========================================="
+  for dir in "${DIRS[@]}"; do
+    local name
+    name=$(basename "$dir")
+    if [[ -f "$STATE_DIR/$name.tfstate" ]]; then
+      echo "  $name"
+      cp "$STATE_DIR/$name.tfstate" "$dir/terraform.tfstate"
+    fi
+  done
+}
+
+backup_state() {
+  mkdir -p "$STATE_DIR"
+  echo ""
+  echo "========================================="
+  echo " Backing up Terraform state"
+  echo "========================================="
+  for dir in "${DIRS[@]}"; do
+    local name
+    name=$(basename "$dir")
+    if [[ -f "$dir/terraform.tfstate" ]]; then
+      echo "  $name"
+      cp "$dir/terraform.tfstate" "$STATE_DIR/$name.tfstate"
+    fi
+  done
+}
 
 run_terraform() {
   local dir=$1
@@ -149,6 +182,8 @@ case "${1:-apply}" in
 
     ensure_homepage_config
 
+    restore_state
+
     # Tear down all containers before touching the network
     echo ""
     echo "========================================="
@@ -165,6 +200,8 @@ case "${1:-apply}" in
     for dir in "${DIRS[@]}"; do
       run_terraform "$dir"
     done
+
+    backup_state
 
     echo ""
     echo "Deploy complete!"
@@ -187,6 +224,7 @@ case "${1:-apply}" in
     ;;
 
   plan)
+    restore_state
     echo "Planning homelab..."
     for dir in "${DIRS[@]}"; do
       name=$(basename "$dir")
