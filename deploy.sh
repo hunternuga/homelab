@@ -165,6 +165,7 @@ case "${1:-apply}" in
         if [[ "$dir" == *"$container"* ]]; then
           echo ""
           echo "Cleaning up existing $container container if present..."
+          docker network disconnect homelab "$container" 2>/dev/null || true
           docker rm -f "$container" 2>/dev/null || true
         fi
       done
