@@ -43,24 +43,6 @@ terraform.rc
 # Uncomment the line below if you want to ignore planout files.
 # planout
 
-# Minepanel - runtime database
-services/minepanel/data/minepanel.db
-
-# Minepanel - per-server runtime data (logs, world, downloaded binaries, secrets)
-services/minepanel/data/servers/*/mc-data/logs/
-services/minepanel/data/servers/*/mc-data/world/
-services/minepanel/data/servers/*/mc-data/libraries/
-services/minepanel/data/servers/*/mc-data/versions/
-services/minepanel/data/servers/*/mc-data/mods/
-services/minepanel/data/servers/*/mc-data/showdown/
-services/minepanel/data/servers/*/mc-data/.cache/
-services/minepanel/data/servers/*/mc-data/.local/
-services/minepanel/data/servers/*/mc-data/.fabric/
-services/minepanel/data/servers/*/mc-data/.install-*.env
-services/minepanel/data/servers/*/mc-data/.rcon-cli.env
-services/minepanel/data/servers/*/mc-data/.rcon-cli.yaml
-services/minepanel/data/servers/*/mc-data/*.jar
-
 # Homepage logs
 services/homepage/config/logs/
 

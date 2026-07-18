@@ -12,18 +12,7 @@ DIRS=(
   "$HOMELAB_DIR/services/cadvisor"
   "$HOMELAB_DIR/services/prometheus"
   "$HOMELAB_DIR/services/grafana"
-  "$HOMELAB_DIR/services/minepanel"
   "$HOMELAB_DIR/services/cloudflared"
-)
-
-CONTAINERS=(
-  "homepage"
-  "it-tools"
-  "cadvisor"
-  "prometheus"
-  "grafana"
-  "minepanel"
-  "cloudflared"
 )
 
 restore_state() {
@@ -86,27 +75,6 @@ destroy_terraform() {
   terraform destroy -auto-approve -input=false
 }
 
-ensure_network() {
-  echo ""
-  echo "========================================="
-  echo " Resetting homelab network"
-  echo "========================================="
-
-  cd "$HOMELAB_DIR/network"
-  terraform init -upgrade -input=false
-
-  # Clear stale state so apply never tries to diff/replace a stuck network
-  terraform state rm docker_network.homelab 2>/dev/null || true
-
-  # Remove and recreate the Docker network fresh
-  docker network rm homelab 2>/dev/null || true
-  docker network create homelab
-
-  # Import and apply
-  terraform import docker_network.homelab homelab
-  terraform apply -auto-approve -input=false
-}
-
 ensure_homepage_config() {
   echo ""
   echo "========================================="
@@ -137,11 +105,6 @@ ensure_homepage_config() {
     - Grafana:
         href: https://grafana.nuga.dev
         description: Metrics and dashboards
-
-- Gaming:
-    - MinePanel:
-        href: https://minepanel.nuga.dev
-        description: Minecraft server manager
 EOF
   fi
 
@@ -173,6 +136,16 @@ EOF
     touch "$config_dir/bookmarks.yaml"
   fi
 
+  # homepage's config-init step aborts entirely if any of these is missing
+  # (it can't fall back to copying its own defaults into a read-only mount),
+  # even though we never customize them.
+  for f in kubernetes.yaml docker.yaml proxmox.yaml custom.css custom.js; do
+    if [[ ! -f "$config_dir/$f" ]]; then
+      echo "$f missing — creating empty..."
+      touch "$config_dir/$f"
+    fi
+  done
+
   echo "Homepage config OK."
 }
 
@@ -183,19 +156,6 @@ case "${1:-apply}" in
     ensure_homepage_config
 
     restore_state
-
-    # Tear down all containers before touching the network
-    echo ""
-    echo "========================================="
-    echo " Cleaning up existing containers"
-    echo "========================================="
-    for container in "${CONTAINERS[@]}"; do
-      docker network disconnect homelab "$container" 2>/dev/null || true
-      docker rm -f "$container" 2>/dev/null || true
-    done
-
-    # Reset network cleanly now that no containers are attached
-    ensure_network
 
     for dir in "${DIRS[@]}"; do
       run_terraform "$dir"
@@ -208,7 +168,6 @@ case "${1:-apply}" in
     echo "  homepage   -> https://homepage.nuga.dev"
     echo "  it-tools   -> https://tools.nuga.dev"
     echo "  grafana    -> https://grafana.nuga.dev"
-    echo "  minepanel  -> https://minepanel.nuga.dev"
     ;;
 
   destroy)
@@ -216,9 +175,6 @@ case "${1:-apply}" in
     for dir in "${!DIRS[@]}"; do
       destroy_terraform "${DIRS[$(( ${#DIRS[@]} - 1 - $dir ))]}"
     done
-    echo ""
-    echo "Cleaning up homelab network..."
-    docker network rm homelab 2>/dev/null || true
     echo ""
     echo "All resources destroyed."
     ;;

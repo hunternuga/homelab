@@ -1,32 +1,4 @@
 # ============================================================
-# Data Sources — Docker Network
-# ============================================================
-
-data "docker_network" "homelab" {
-  name = "homelab"
-}
-
-# ============================================================
-# Data Sources — Container IPs
-# ============================================================
-
-data "external" "homepage_ip" {
-  program = ["${path.module}/../../scripts/get_homepage_ip.sh"]
-}
-
-data "external" "it_tools_ip" {
-  program = ["${path.module}/../../scripts/get_it_tools_ip.sh"]
-}
-
-data "external" "grafana_ip" {
-  program = ["${path.module}/../../scripts/get_grafana_ip.sh"]
-}
-
-data "external" "minepanel_ip" {
-  program = ["${path.module}/../../scripts/get_minepanel_ip.sh"]
-}
-
-# ============================================================
 # Cloudflare Tunnel
 # ============================================================
 
@@ -59,22 +31,6 @@ resource "cloudflare_record" "it_tools" {
 resource "cloudflare_record" "grafana" {
   zone_id = var.cloudflare_zone_id
   name    = "grafana"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
-  type    = "CNAME"
-  proxied = true
-}
-
-resource "cloudflare_record" "minepanel" {
-  zone_id = var.cloudflare_zone_id
-  name    = "minepanel"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
-  type    = "CNAME"
-  proxied = true
-}
-
-resource "cloudflare_record" "minepanel_api" {
-  zone_id = var.cloudflare_zone_id
-  name    = "minepanel-api"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
   type    = "CNAME"
   proxied = true
@@ -128,106 +84,132 @@ resource "cloudflare_zero_trust_access_policy" "grafana" {
   }
 }
 
-# ============================================================
-# Cloudflare Access — MinePanel (frontend, email auth)
-# ============================================================
 
-resource "cloudflare_zero_trust_access_application" "minepanel" {
-  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
-  name             = "MinePanel"
-  domain           = "minepanel.nuga.dev"
-  type             = "self_hosted"
-  session_duration = "24h"
+# ============================================================
+# Cloudflared — Ingress Config
+# ============================================================
+#
+# One static rule: every hostname routes to Traefik (k3s's bundled
+# ingress controller), which does the actual per-service host-based
+# routing via each service's own Ingress resource. This replaces the
+# old per-service, dynamically-resolved-container-IP config entirely —
+# Kubernetes Services give every backend a stable DNS name, so there's
+# nothing left to resolve at apply time.
+
+locals {
+  cloudflared_config = yamlencode({
+    tunnel             = cloudflare_zero_trust_tunnel_cloudflared.homelab.id
+    "credentials-file" = "/etc/cloudflared/creds/credentials.json"
+    ingress = [
+      {
+        hostname = "*.nuga.dev"
+        service  = "http://traefik.kube-system.svc.cluster.local:80"
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+  })
 }
 
-resource "cloudflare_zero_trust_access_policy" "minepanel" {
-  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
-  application_id = cloudflare_zero_trust_access_application.minepanel.id
-  name           = "Allow hunternuga293"
-  precedence     = 1
-  decision       = "allow"
+resource "kubernetes_config_map" "cloudflared_config" {
+  metadata {
+    name      = "cloudflared-config"
+    namespace = "homelab"
+  }
 
-  include {
-    email = ["hunternuga293@gmail.com"]
+  data = {
+    "config.yml" = local.cloudflared_config
+  }
+}
+
+resource "kubernetes_secret" "cloudflared_credentials" {
+  metadata {
+    name      = "cloudflared-credentials"
+    namespace = "homelab"
+  }
+
+  data = {
+    "credentials.json" = jsonencode({
+      AccountTag   = "a1d47b88a31b30932d1974da0a55e80e"
+      TunnelID     = cloudflare_zero_trust_tunnel_cloudflared.homelab.id
+      TunnelSecret = var.tunnel_secret
+    })
   }
 }
 
 # ============================================================
-# Cloudflare Access — MinePanel API (bypass, JWT handles auth)
+# Cloudflared Deployment
 # ============================================================
 
-resource "cloudflare_zero_trust_access_application" "minepanel_api" {
-  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
-  name             = "MinePanel API"
-  domain           = "minepanel-api.nuga.dev"
-  type             = "self_hosted"
-  session_duration = "24h"
-}
-
-resource "cloudflare_zero_trust_access_policy" "minepanel_api_bypass" {
-  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
-  application_id = cloudflare_zero_trust_access_application.minepanel_api.id
-  name           = "Bypass API"
-  precedence     = 1
-  decision       = "bypass"
-
-  include {
-    everyone = true
-  }
-}
-
-# ============================================================
-# Cloudflared Container
-# ============================================================
-
-resource "docker_image" "cloudflared" {
-  name         = "cloudflare/cloudflared:latest"
-  keep_locally = true
-}
-
-resource "docker_volume" "cloudflared_config" {
-  name = "cloudflared_config"
-}
-
-resource "null_resource" "cloudflared_credentials" {
-  depends_on = [docker_volume.cloudflared_config]
-
-  triggers = {
-    tunnel_id    = cloudflare_zero_trust_tunnel_cloudflared.homelab.id
-    homepage_ip  = data.external.homepage_ip.result.ip
-    it_tools_ip  = data.external.it_tools_ip.result.ip
-    grafana_ip   = data.external.grafana_ip.result.ip
-    minepanel_ip = data.external.minepanel_ip.result.ip
+resource "kubernetes_deployment" "cloudflared" {
+  metadata {
+    name      = "cloudflared"
+    namespace = "homelab"
+    labels    = { app = "cloudflared" }
   }
 
-  provisioner "local-exec" {
-    command = "${path.module}/../../scripts/write_cloudflared_config.sh ${cloudflare_zero_trust_tunnel_cloudflared.homelab.id} ${var.tunnel_secret} ${data.external.homepage_ip.result.ip} ${data.external.it_tools_ip.result.ip} ${data.external.grafana_ip.result.ip} ${data.external.minepanel_ip.result.ip}"
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = { app = "cloudflared" }
+    }
+
+    template {
+      metadata {
+        labels = { app = "cloudflared" }
+      }
+
+      spec {
+        node_selector = { "homelab/role" = "apps" }
+
+        # Default (ClusterFirst) DNS policy — cloudflared's ingress config
+        # points at traefik.kube-system.svc.cluster.local, which only the
+        # cluster's own CoreDNS can resolve. The old Docker setup pinned to
+        # public resolvers because it never needed to resolve anything
+        # internal; that assumption no longer holds here.
+
+        container {
+          name  = "cloudflared"
+          image = "cloudflare/cloudflared:latest"
+
+          args = [
+            "tunnel",
+            "--no-autoupdate",
+            "--config", "/etc/cloudflared/config.yml",
+            "run",
+          ]
+
+          volume_mount {
+            name       = "config"
+            mount_path = "/etc/cloudflared"
+            read_only  = true
+          }
+
+          volume_mount {
+            name       = "creds"
+            mount_path = "/etc/cloudflared/creds"
+            read_only  = true
+          }
+        }
+
+        volume {
+          name = "config"
+
+          config_map {
+            name = kubernetes_config_map.cloudflared_config.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "creds"
+
+          secret {
+            secret_name = kubernetes_secret.cloudflared_credentials.metadata[0].name
+          }
+        }
+      }
+    }
   }
-}
-
-resource "docker_container" "cloudflared" {
-  depends_on = [null_resource.cloudflared_credentials]
-
-  name  = "cloudflared"
-  image = docker_image.cloudflared.image_id
-
-  command = [
-    "tunnel",
-    "--no-autoupdate",
-    "--config", "/etc/cloudflared/config.yml",
-    "run"
-  ]
-
-  dns = ["1.1.1.1", "1.0.0.1"]
-
-  volumes {
-    volume_name    = docker_volume.cloudflared_config.name
-    container_path = "/etc/cloudflared"
-  }
-
-  networks_advanced {
-    name = data.docker_network.homelab.name
-  }
-
-  restart = "unless-stopped"
 }

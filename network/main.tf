@@ -1,7 +1,5 @@
-resource "docker_network" "homelab" {
-  name = "homelab"
-
-  options = {
-    "dns_enabled" = "false"
+resource "kubernetes_namespace" "homelab" {
+  metadata {
+    name = "homelab"
   }
 }

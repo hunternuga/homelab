@@ -23,7 +23,7 @@ jobs:
       - name: Restore secrets
         run: |
           cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
-          cp ~/.homelab-secrets/minepanel.tfvars services/minepanel/terraform.tfvars
+          cp ~/.homelab-secrets/grafana.tfvars services/grafana/terraform.tfvars
 
       - name: Plan
         run: ./deploy.sh plan
@@ -38,7 +38,7 @@ jobs:
       - name: Restore secrets
         run: |
           cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
-          cp ~/.homelab-secrets/minepanel.tfvars services/minepanel/terraform.tfvars
+          cp ~/.homelab-secrets/grafana.tfvars services/grafana/terraform.tfvars
 
       - name: Deploy
         run: ./deploy.sh

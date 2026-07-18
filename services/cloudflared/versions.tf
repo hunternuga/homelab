@@ -1,26 +1,18 @@
 terraform {
   required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.30"
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
       version = "~> 4.0"
     }
-    null = {
-      source  = "hashicorp/null"
-      version = "~> 3.0"
-    }
-    external = {
-      source  = "hashicorp/external"
-      version = "~> 2.0"
-    }   
   }
 }
 
-provider "docker" {
-  host = "unix:///var/run/docker.sock"
+provider "kubernetes" {
+  config_path = "/etc/rancher/k3s/k3s.yaml"
 }
 
 provider "cloudflare" {
