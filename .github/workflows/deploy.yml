@@ -24,6 +24,7 @@ jobs:
         run: |
           cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
           cp ~/.homelab-secrets/grafana.tfvars services/grafana/terraform.tfvars
+          cp ~/.homelab-secrets/kcal.tfvars services/kcal/terraform.tfvars
 
       - name: Plan
         run: ./deploy.sh plan
@@ -32,13 +33,29 @@ jobs:
     name: Deploy
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
+
+      # Uses podman directly rather than `docker` — the runner only has the
+      # `docker` shell alias from interactive profiles, which non-interactive
+      # `run:` steps don't source.
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push kcal image
+        run: |
+          podman build -t ghcr.io/hunternuga/kcal:latest -t "ghcr.io/hunternuga/kcal:${GITHUB_SHA::7}" services/kcal/app
+          podman push ghcr.io/hunternuga/kcal:latest
+          podman push "ghcr.io/hunternuga/kcal:${GITHUB_SHA::7}"
 
       - name: Restore secrets
         run: |
           cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
           cp ~/.homelab-secrets/grafana.tfvars services/grafana/terraform.tfvars
+          cp ~/.homelab-secrets/kcal.tfvars services/kcal/terraform.tfvars
 
       - name: Deploy
         run: ./deploy.sh

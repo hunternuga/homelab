@@ -19,6 +19,7 @@ A self-hosted homelab stack managed with Terraform and deployed automatically vi
 | Homepage | [homepage.nuga.dev](https://homepage.nuga.dev) | Public |
 | IT Tools | [tools.nuga.dev](https://tools.nuga.dev) | Cloudflare Access |
 | Grafana | [grafana.nuga.dev](https://grafana.nuga.dev) | Cloudflare Access |
+| [Kcal](services/kcal/) | [kcal.nuga.dev](https://kcal.nuga.dev) | Cloudflare Access |
 
 Monitoring (Prometheus + cAdvisor) runs internally and feeds into Grafana.
 
@@ -69,6 +70,12 @@ Create `services/grafana/terraform.tfvars`:
 grafana_admin_password = "your-password"
 ```
 
+Create `services/kcal/terraform.tfvars` (generate the secret with `openssl rand -base64 32`):
+
+```hcl
+kcal_session_secret = "your-generated-secret"
+```
+
 **2. Deploy**
 
 ```bash
@@ -93,7 +100,7 @@ cd ~/actions-runner
 ## Adding a Service
 
 1. Create a directory under `services/`
-2. Add a `main.tf` with a `kubernetes_deployment`, `kubernetes_service`, and (if it needs to be reachable from outside the cluster) a `kubernetes_ingress_v1` pointed at `<name>.nuga.dev` — copy `services/it-tools/main.tf` as a minimal template
+2. Add a `main.tf` with a `kubernetes_deployment`, `kubernetes_service`, and (if it needs to be reachable from outside the cluster) a `kubernetes_ingress_v1` pointed at `<name>.nuga.dev` — copy `services/it-tools/main.tf` as a minimal template. Alternatively, if the service ships as (or has) a Helm chart, use a `helm_release` resource instead — see `services/kcal/` for that pattern.
 3. Add the service's directory to `DIRS` in `deploy.sh`, before `cloudflared`
 4. Add a DNS record (and optionally a Cloudflare Access policy) in `services/cloudflared/main.tf` — cloudflared itself doesn't need any changes, since it routes every hostname to Traefik and Traefik dispatches by the Ingress rules already in the cluster
 5. Run `./deploy.sh`

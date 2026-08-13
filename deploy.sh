@@ -12,6 +12,7 @@ DIRS=(
   "$HOMELAB_DIR/services/cadvisor"
   "$HOMELAB_DIR/services/prometheus"
   "$HOMELAB_DIR/services/grafana"
+  "$HOMELAB_DIR/services/kcal"
   "$HOMELAB_DIR/services/cloudflared"
 )
 
@@ -168,6 +169,7 @@ case "${1:-apply}" in
     echo "  homepage   -> https://homepage.nuga.dev"
     echo "  it-tools   -> https://tools.nuga.dev"
     echo "  grafana    -> https://grafana.nuga.dev"
+    echo "  kcal       -> https://kcal.nuga.dev"
     ;;
 
   destroy)

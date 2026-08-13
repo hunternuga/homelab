@@ -1,0 +1,35 @@
+{{define "content"}}
+<h1>History</h1>
+
+<div class="card">
+  <h2>Last 7 days</h2>
+  <div class="totals">
+    <div class="stat"><span class="value">{{.WeekTotals.Calories}}</span><span class="label">kcal</span></div>
+    <div class="stat"><span class="value">{{printf "%.0f" .WeekTotals.ProteinG}}g</span><span class="label">protein</span></div>
+    <div class="stat"><span class="value">{{printf "%.0f" .WeekTotals.CarbsG}}g</span><span class="label">carbs</span></div>
+    <div class="stat"><span class="value">{{printf "%.0f" .WeekTotals.FatG}}g</span><span class="label">fat</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Last 30 days</h2>
+  {{if .Days}}
+  <table>
+    <thead><tr><th>Date</th><th>kcal</th><th>P</th><th>C</th><th>F</th></tr></thead>
+    <tbody>
+      {{range .Days}}
+      <tr>
+        <td>{{.Date}}</td>
+        <td>{{.Totals.Calories}}</td>
+        <td>{{printf "%.0f" .Totals.ProteinG}}</td>
+        <td>{{printf "%.0f" .Totals.CarbsG}}</td>
+        <td>{{printf "%.0f" .Totals.FatG}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="muted">No entries in the last 30 days.</p>
+  {{end}}
+</div>
+{{end}}

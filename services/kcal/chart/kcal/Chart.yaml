@@ -1,0 +1,9 @@
+apiVersion: v2
+name: kcal
+description: A lightweight, self-hosted calorie and macro tracker
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/hunternuga/homelab/tree/main/services/kcal
+sources:
+  - https://github.com/hunternuga/homelab/tree/main/services/kcal

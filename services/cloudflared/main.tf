@@ -36,6 +36,14 @@ resource "cloudflare_record" "grafana" {
   proxied = true
 }
 
+resource "cloudflare_record" "kcal" {
+  zone_id = var.cloudflare_zone_id
+  name    = "kcal"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+}
+
 # ============================================================
 # Cloudflare Access — IT Tools
 # ============================================================
@@ -75,6 +83,30 @@ resource "cloudflare_zero_trust_access_application" "grafana" {
 resource "cloudflare_zero_trust_access_policy" "grafana" {
   account_id     = "a1d47b88a31b30932d1974da0a55e80e"
   application_id = cloudflare_zero_trust_access_application.grafana.id
+  name           = "Allow hunternuga293"
+  precedence     = 1
+  decision       = "allow"
+
+  include {
+    email = ["hunternuga293@gmail.com"]
+  }
+}
+
+# ============================================================
+# Cloudflare Access — kcal
+# ============================================================
+
+resource "cloudflare_zero_trust_access_application" "kcal" {
+  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
+  name             = "kcal"
+  domain           = "kcal.nuga.dev"
+  type             = "self_hosted"
+  session_duration = "24h"
+}
+
+resource "cloudflare_zero_trust_access_policy" "kcal" {
+  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
+  application_id = cloudflare_zero_trust_access_application.kcal.id
   name           = "Allow hunternuga293"
   precedence     = 1
   decision       = "allow"

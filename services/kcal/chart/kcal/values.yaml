@@ -1,0 +1,52 @@
+# SQLite is single-writer, so kcal is not designed to run more than one
+# replica.
+replicaCount: 1
+
+image:
+  repository: ghcr.io/hunternuga/kcal
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: traefik
+  host: kcal.example.com
+
+persistence:
+  enabled: true
+  size: 1Gi
+  # Leave empty to use the cluster's default StorageClass.
+  storageClassName: ""
+
+# Signs session cookies. Exactly one of these must be set:
+#   sessionSecret  - a plaintext value; the chart creates the Secret for you
+#   existingSecret - the name of a Secret you already created, containing a
+#                     "session-secret" key
+# Losing/rotating this value invalidates all existing sessions.
+sessionSecret: ""
+existingSecret: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+resources: {}
+
+# The published image runs as the distroless "nonroot" user (uid/gid
+# 65532). fsGroup ensures the PersistentVolume is group-writable by that
+# user once Kubernetes mounts it — without it the container can start but
+# fails to open the SQLite file.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532

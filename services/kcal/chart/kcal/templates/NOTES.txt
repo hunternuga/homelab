@@ -1,0 +1,11 @@
+kcal is starting up.
+
+{{- if .Values.ingress.enabled }}
+Visit: http://{{ .Values.ingress.host }}
+{{- else }}
+Forward a local port to reach it:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kcal.fullname" . }} 8080:{{ .Values.service.port }}
+  open http://localhost:8080
+{{- end }}
+
+Register the first account at /register.

@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="card auth-card">
+  <h1>Register</h1>
+  {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+  <form method="post" action="/register">
+    <label>Username<input type="text" name="username" required autofocus></label>
+    <label>Password<input type="password" name="password" required minlength="8"></label>
+    <button type="submit">Create account</button>
+  </form>
+  <p class="muted">Already have an account? <a href="/login">Log in</a></p>
+</div>
+{{end}}
