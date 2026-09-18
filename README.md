@@ -11,13 +11,27 @@ through Cloudflare Tunnel — no port forwarding required.
 | Infrastructure as code | Terraform |
 | Container orchestration | Kubernetes (k3s) |
 | Ingress | Traefik (bundled with k3s), fronted by Cloudflare Zero Trust Tunnel |
-| Auth | Cloudflare Access (OTP + passkey) |
+| Auth | Home Assistant's own login — see "Why no Cloudflare Access" below |
 
 ## Services
 
 | Service | URL | Auth |
 |---|---|---|
-| [Home Assistant](services/home-assistant/) | [home.nuga.dev](https://home.nuga.dev) | Cloudflare Access |
+| [Home Assistant](services/home-assistant/) | [home.nuga.dev](https://home.nuga.dev) | Home Assistant login |
+
+`nuga.dev` itself (the apex domain) isn't part of this stack — it's routed
+via Cloudflare DNS to a GitHub Pages-hosted portfolio site
+(`hunternuga.github.io`), managed entirely outside this repo. Only
+subdomains under it (like `home.nuga.dev`) belong to this Terraform.
+
+### Why no Cloudflare Access
+
+The Home Assistant iOS Companion App makes raw (non-browser) API calls that
+choke on Cloudflare Access's HTML login challenge instead of the JSON they
+expect, and Access has no native way to exempt just the app's traffic
+(no User-Agent/header selector) short of enrolling every device in
+Cloudflare WARP. Home Assistant's own login — which has IP-ban-after-
+failed-attempts enabled by default — is the auth boundary instead.
 
 ## Cluster
 
