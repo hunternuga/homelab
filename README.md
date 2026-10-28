@@ -122,13 +122,11 @@ below.
 ## CI/CD
 
 > **Status:** the runner (`homelab-minipc`) is registered and running on
-> the mini PC. One real limitation: `deploy.sh` runs with `set -e`, so a
-> push-triggered deploy stops at the first service that fails — right now
-> that's `collection-tracker` (no secrets yet, see above), which means
-> `minepanel` and `cloudflared` (ordered after it in `DIRS`) won't pick up
-> *new* changes via CI until collection-tracker is either deployed for
-> real or moved later in `DIRS`. Apply those two manually in the meantime
-> if you change them.
+> the mini PC. `collection-tracker` is deliberately left out of
+> `deploy.sh`'s `DIRS` for now, since it has no secrets configured
+> anywhere yet — `deploy.sh` runs with `set -e`, so leaving it in would
+> make every CI deploy stop there and never reach the services after it.
+> Add it back to `DIRS` once its `terraform.tfvars`/CI secret exist.
 
 A self-hosted GitHub Actions runner on the k3s node builds and pushes the
 `collection-tracker` container image to GHCR, then runs `./deploy.sh`

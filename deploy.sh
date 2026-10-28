@@ -8,7 +8,10 @@ STATE_DIR="$HOME/.homelab-state"
 DIRS=(
   "$HOMELAB_DIR/network"
   "$HOMELAB_DIR/services/home-assistant"
-  "$HOMELAB_DIR/services/collection-tracker"
+  # collection-tracker is omitted here — it has no terraform.tfvars
+  # anywhere yet (no Postgres password, eBay API creds, HA token). Add it
+  # back once those secrets exist; until then its presence would make
+  # every CI deploy fail here and never reach the services below it.
   "$HOMELAB_DIR/services/minepanel"
   "$HOMELAB_DIR/services/cloudflared"
 )
@@ -87,9 +90,8 @@ case "${1:-apply}" in
 
     echo ""
     echo "Deploy complete!"
-    echo "  home-assistant     -> https://home.nuga.dev"
-    echo "  collection-tracker -> https://collection.nuga.dev"
-    echo "  minepanel          -> https://minepanel.nuga.dev"
+    echo "  home-assistant -> https://home.nuga.dev"
+    echo "  minepanel      -> https://minepanel.nuga.dev"
     ;;
 
   destroy)
