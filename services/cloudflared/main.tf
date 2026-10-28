@@ -33,19 +33,135 @@ resource "cloudflare_record" "home_assistant" {
 # is the auth boundary here instead; it has IP-ban-after-failed-attempts
 # enabled by default.
 
+resource "cloudflare_record" "collection_tracker" {
+  zone_id = var.cloudflare_zone_id
+  name    = "collection"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+}
+
+# ============================================================
+# Cloudflare Access — Collection Tracker
+# ============================================================
+#
+# Unlike Home Assistant, this is a plain browser dashboard with no
+# dedicated mobile app to break on Access's interactive login — safe to
+# put behind Access.
+
+resource "cloudflare_zero_trust_access_application" "collection_tracker" {
+  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
+  name             = "Collection Tracker"
+  domain           = "collection.nuga.dev"
+  type             = "self_hosted"
+  session_duration = "24h"
+}
+
+resource "cloudflare_zero_trust_access_policy" "collection_tracker" {
+  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
+  application_id = cloudflare_zero_trust_access_application.collection_tracker.id
+  name           = "Allow hunternuga"
+  precedence     = 1
+  decision       = "allow"
+
+  include {
+    email = ["hunter.nuga@gmail.com"]
+  }
+}
+
+resource "cloudflare_record" "minepanel" {
+  zone_id = var.cloudflare_zone_id
+  name    = "minepanel"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+}
+
+resource "cloudflare_record" "minepanel_api" {
+  zone_id = var.cloudflare_zone_id
+  name    = "minepanel-api"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+}
+
+# ============================================================
+# Cloudflare Access — MinePanel
+# ============================================================
+#
+# MinePanel has full Docker socket access (it can run arbitrary
+# containers), so the frontend sits behind email-gated Access like
+# Collection Tracker. The API domain gets an Access application too (so
+# it's visible/manageable) but with a bypass policy — the frontend calls
+# it directly from the browser, and MinePanel's own JWT login is the
+# real gate on that side. Matches the setup from before this got deleted.
+
+resource "cloudflare_zero_trust_access_application" "minepanel" {
+  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
+  name             = "MinePanel"
+  domain           = "minepanel.nuga.dev"
+  type             = "self_hosted"
+  session_duration = "24h"
+}
+
+resource "cloudflare_zero_trust_access_policy" "minepanel" {
+  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
+  application_id = cloudflare_zero_trust_access_application.minepanel.id
+  name           = "Allow hunternuga"
+  precedence     = 1
+  decision       = "allow"
+
+  include {
+    email = ["hunter.nuga@gmail.com"]
+  }
+}
+
+resource "cloudflare_zero_trust_access_application" "minepanel_api" {
+  account_id       = "a1d47b88a31b30932d1974da0a55e80e"
+  name             = "MinePanel API"
+  domain           = "minepanel-api.nuga.dev"
+  type             = "self_hosted"
+  session_duration = "24h"
+}
+
+resource "cloudflare_zero_trust_access_policy" "minepanel_api_bypass" {
+  account_id     = "a1d47b88a31b30932d1974da0a55e80e"
+  application_id = cloudflare_zero_trust_access_application.minepanel_api.id
+  name           = "Bypass API"
+  precedence     = 1
+  decision       = "bypass"
+
+  include {
+    everyone = true
+  }
+}
+
 # ============================================================
 # Cloudflared — Ingress Config
 # ============================================================
 #
-# One static rule: every hostname routes to Traefik (k3s's bundled
-# ingress controller), which does the actual per-service host-based
-# routing via each service's own Ingress resource.
+# Every *.nuga.dev hostname routes to Traefik (k3s's bundled ingress
+# controller) by default, which does per-service host-based routing via
+# each service's own Ingress resource. MinePanel is the one exception —
+# it runs as plain Docker on this same node (not a k3s workload, since it
+# needs the host's Docker socket), so its two hostnames route straight to
+# the node's LAN IP and published ports instead of through Traefik.
 
 locals {
+  node_lan_ip = "10.0.0.61"
+
   cloudflared_config = yamlencode({
     tunnel             = cloudflare_zero_trust_tunnel_cloudflared.homelab.id
     "credentials-file" = "/etc/cloudflared/creds/credentials.json"
     ingress = [
+      {
+        hostname = "minepanel.nuga.dev"
+        service  = "http://${local.node_lan_ip}:3000"
+      },
+      {
+        hostname = "minepanel-api.nuga.dev"
+        service  = "http://${local.node_lan_ip}:8091"
+      },
       {
         hostname = "*.nuga.dev"
         service  = "http://traefik.kube-system.svc.cluster.local:80"

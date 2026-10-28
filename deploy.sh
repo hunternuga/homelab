@@ -8,6 +8,8 @@ STATE_DIR="$HOME/.homelab-state"
 DIRS=(
   "$HOMELAB_DIR/network"
   "$HOMELAB_DIR/services/home-assistant"
+  "$HOMELAB_DIR/services/collection-tracker"
+  "$HOMELAB_DIR/services/minepanel"
   "$HOMELAB_DIR/services/cloudflared"
 )
 
@@ -85,7 +87,9 @@ case "${1:-apply}" in
 
     echo ""
     echo "Deploy complete!"
-    echo "  home-assistant -> https://home.nuga.dev"
+    echo "  home-assistant     -> https://home.nuga.dev"
+    echo "  collection-tracker -> https://collection.nuga.dev"
+    echo "  minepanel          -> https://minepanel.nuga.dev"
     ;;
 
   destroy)

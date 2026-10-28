@@ -1,7 +1,9 @@
 # nuga homelab
 
-A self-hosted homelab stack managed with Terraform. Services run as
-Kubernetes workloads on a single-node k3s cluster and are exposed securely
+A self-hosted homelab stack managed with Terraform, running on a mini PC on
+the home network. Most services run as Kubernetes workloads on a
+single-node k3s cluster; MinePanel runs as plain Docker instead, since it
+needs direct access to the Docker socket. Everything is exposed securely
 through Cloudflare Tunnel — no port forwarding required.
 
 ## Stack
@@ -9,15 +11,17 @@ through Cloudflare Tunnel — no port forwarding required.
 | Layer | Tool |
 |---|---|
 | Infrastructure as code | Terraform |
-| Container orchestration | Kubernetes (k3s) |
+| Container orchestration | Kubernetes (k3s), plus plain Docker for MinePanel |
 | Ingress | Traefik (bundled with k3s), fronted by Cloudflare Zero Trust Tunnel |
-| Auth | Home Assistant's own login — see "Why no Cloudflare Access" below |
+| Auth | Per-service — see the Services table and "Why no Cloudflare Access" below |
 
 ## Services
 
 | Service | URL | Auth |
 |---|---|---|
 | [Home Assistant](services/home-assistant/) | [home.nuga.dev](https://home.nuga.dev) | Home Assistant login |
+| [Collection Tracker](services/collection-tracker/) | [collection.nuga.dev](https://collection.nuga.dev) | Cloudflare Access |
+| [MinePanel](services/minepanel/) | [minepanel.nuga.dev](https://minepanel.nuga.dev) | Cloudflare Access (frontend) + its own login |
 
 `nuga.dev` itself (the apex domain) isn't part of this stack — it's routed
 via Cloudflare DNS to a GitHub Pages-hosted portfolio site
@@ -35,36 +39,42 @@ failed-attempts enabled by default — is the auth boundary instead.
 
 ## Cluster
 
-One AWS Lightsail instance (Ubuntu 24.04, `medium_3_0`, 4GB plan) running
-k3s server, control-plane and app workloads together — this is a small
-enough stack that splitting control-plane and app nodes isn't worth the
-extra cost or complexity right now.
+One bare-metal mini PC on the home network (Debian 13, 8 threads, 16GB RAM)
+running k3s server, control-plane and app workloads together, plus Docker
+for MinePanel — this is a small enough stack that splitting any of this out
+isn't worth the extra complexity right now. Previously ran on an AWS
+Lightsail VM; moved here to avoid the monthly cost and because the hardware
+is strong enough to also run MinePanel's Minecraft server containers.
 
-**Provisioning:**
+**Provisioning** (there's no cloud API to drive for physical hardware, so
+this is the manual, one-time setup after a fresh OS install):
 
 ```bash
 curl -sfL https://get.k3s.io | sh -
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker "$USER"
+```
+
+Terraform itself isn't packaged for Debian — add HashiCorp's apt repo first:
+
+```bash
+wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install -y terraform
 ```
 
 Copy `/etc/rancher/k3s/k3s.yaml` from the node if you want `kubectl`/Terraform
-access from elsewhere — swap `127.0.0.1` for the node's IP. Every service
-module's `provider "kubernetes"` block defaults `config_path` to
-`/etc/rancher/k3s/k3s.yaml`, which is why Terraform runs directly on the
-node.
+access from elsewhere — swap `127.0.0.1` for the node's IP. Every
+Kubernetes-based service module's `provider "kubernetes"` block defaults
+`config_path` to `/etc/rancher/k3s/k3s.yaml`, which is why Terraform runs
+directly on the node. `services/minepanel/`'s `provider "docker"` block
+likewise defaults to the node's local Docker socket.
 
 ## Setup
 
-**Prerequisites:** [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0, a running k3s cluster (see above), a Cloudflare account with a domain.
+**Prerequisites:** [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0, a running k3s cluster + Docker (see "Cluster" above for provisioning a fresh node), a Cloudflare account with a domain.
 
-**1. Provision the node**
-
-```bash
-cd infra
-terraform init
-terraform apply
-```
-
-**2. Configure secrets**
+**1. Configure secrets**
 
 ```bash
 chmod +x deploy.sh
@@ -81,7 +91,23 @@ tunnel_secret        = "$(openssl rand -base64 32)"
 `services/home-assistant/terraform.tfvars` is optional — only needed if you
 want to override the default `timezone` (`America/Denver`).
 
-**3. Deploy**
+Create `services/collection-tracker/terraform.tfvars`:
+
+```hcl
+collection_postgres_password  = "generate-a-password"
+collection_ebay_client_id     = "your-ebay-client-id"
+collection_ebay_client_secret = "your-ebay-client-secret"
+collection_ha_token           = "your-ha-long-lived-access-token"
+collection_ha_notify_service  = "notify.mobile_app_your_device"
+```
+
+Create `services/minepanel/terraform.tfvars`:
+
+```hcl
+minepanel_jwt_secret = "$(openssl rand -base64 32)"
+```
+
+**2. Deploy**
 
 ```bash
 ./deploy.sh          # deploy all services
@@ -89,10 +115,43 @@ want to override the default `timezone` (`America/Denver`).
 ./deploy.sh destroy  # tear everything down
 ```
 
-Deploys are manual — run `./deploy.sh` from the k3s node (or anywhere with
-`/etc/rancher/k3s/k3s.yaml` copied locally) whenever you want to apply
-changes. There's no CI/CD wired up right now; this stack is small enough
-that it isn't worth the setup.
+You can run `./deploy.sh` by hand from the k3s node (or anywhere with
+`/etc/rancher/k3s/k3s.yaml` copied locally), or let CI/CD do it — see
+below.
+
+## CI/CD
+
+> **Status:** the runner described below lived on the old Lightsail node
+> and hasn't been re-registered on the mini PC yet — CI/CD is currently
+> inactive. The one-time setup instructions still apply, just run them on
+> the new node.
+
+A self-hosted GitHub Actions runner on the k3s node builds and pushes the
+`collection-tracker` container image to GHCR, then runs `./deploy.sh`
+(pushes to `main`) or `./deploy.sh plan` (pull requests). Home Assistant
+needs no build step since it uses the public upstream image directly, but
+still gets applied along with everything else since `deploy.sh` loops over
+every service.
+
+**One-time runner setup**, on the k3s node:
+
+```bash
+sudo apt-get install -y podman
+
+TOKEN=$(gh api repos/hunternuga/homelab/actions/runners/registration-token -X POST --jq .token)
+curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64.tar.gz
+mkdir actions-runner && tar xzf actions-runner.tar.gz -C actions-runner
+cd actions-runner
+./config.sh --url https://github.com/hunternuga/homelab --token "$TOKEN"
+sudo ./svc.sh install
+sudo ./svc.sh start
+```
+
+Then create `~/.homelab-secrets/cloudflared.tfvars`,
+`~/.homelab-secrets/collection-tracker.tfvars`, and
+`~/.homelab-secrets/minepanel.tfvars` on the node with the same contents as
+the `terraform.tfvars` files above — the workflow restores these before
+every plan/apply so secrets never touch the repo.
 
 ## External Manual Setup
 
@@ -130,10 +189,30 @@ after the first deploy:
    kubectl rollout restart deployment/home-assistant -n homelab
    ```
 
+5. **eBay Developer Program app** (for Collection Tracker) — register at
+   [developer.ebay.com](https://developer.ebay.com), create a Production
+   keyset, and use its Client ID/Secret for
+   `collection_ebay_client_id`/`collection_ebay_client_secret`.
+6. **Home Assistant long-lived access token** (for Collection Tracker's
+   notifications) — generate one in the Home Assistant UI under your
+   profile page → Long-Lived Access Tokens.
+7. **Look up your notify service name** — in the running Home Assistant
+   instance, check Developer Tools → Services (or Settings → Devices →
+   your phone) for the exact `notify.mobile_app_<device>` service; it
+   depends on your device's registered name so it can't be guessed ahead
+   of time.
+8. **Adding future wanted items** to Collection Tracker — there's no admin
+   UI for this (rarely-used, single-user path); insert rows directly:
+
+   ```bash
+   kubectl exec -it deploy/collection-postgres -n homelab -- psql -U collection -d collection
+   ```
+
 ## Adding a Service
 
 1. Create a directory under `services/`
 2. Add a `main.tf` with a `kubernetes_deployment`, `kubernetes_service`, and (if it needs to be reachable from outside the cluster) a `kubernetes_ingress_v1` pointed at `<name>.nuga.dev` — copy `services/home-assistant/main.tf` as a minimal template. Alternatively, if the service ships as (or has) a Helm chart, use a `helm_release` resource instead.
+   - If the service genuinely can't run in Kubernetes (needs the host's Docker socket, like MinePanel), use the `kreuzwerker/docker` provider and `docker_container` resources instead — copy `services/minepanel/main.tf` as a template. In that case cloudflared's ingress config needs a rule pointing straight at the node's LAN IP and published port instead of at Traefik (see `local.cloudflared_config` in `services/cloudflared/main.tf`).
 3. Add the service's directory to `DIRS` in `deploy.sh`, before `cloudflared`
-4. Add a DNS record (and optionally a Cloudflare Access policy) in `services/cloudflared/main.tf` — cloudflared itself doesn't need any changes, since it routes every hostname to Traefik and Traefik dispatches by the Ingress rules already in the cluster
+4. Add a DNS record (and optionally a Cloudflare Access policy) in `services/cloudflared/main.tf` — for a Kubernetes-based service, cloudflared itself doesn't need any changes, since it routes every hostname to Traefik and Traefik dispatches by the Ingress rules already in the cluster
 5. Run `./deploy.sh`
