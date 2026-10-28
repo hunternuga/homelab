@@ -121,10 +121,14 @@ below.
 
 ## CI/CD
 
-> **Status:** the runner described below lived on the old Lightsail node
-> and hasn't been re-registered on the mini PC yet — CI/CD is currently
-> inactive. The one-time setup instructions still apply, just run them on
-> the new node.
+> **Status:** the runner (`homelab-minipc`) is registered and running on
+> the mini PC. One real limitation: `deploy.sh` runs with `set -e`, so a
+> push-triggered deploy stops at the first service that fails — right now
+> that's `collection-tracker` (no secrets yet, see above), which means
+> `minepanel` and `cloudflared` (ordered after it in `DIRS`) won't pick up
+> *new* changes via CI until collection-tracker is either deployed for
+> real or moved later in `DIRS`. Apply those two manually in the meantime
+> if you change them.
 
 A self-hosted GitHub Actions runner on the k3s node builds and pushes the
 `collection-tracker` container image to GHCR, then runs `./deploy.sh`
@@ -138,11 +142,17 @@ every service.
 ```bash
 sudo apt-get install -y podman
 
+# The "latest/download/<fixed-filename>" URL only works while the asset
+# filename has no version in it — GitHub's actual releases are versioned
+# (e.g. actions-runner-linux-x64-2.338.2.tar.gz), so resolve it dynamically.
+RUNNER_URL=$(gh api repos/actions/runner/releases/latest --jq '.assets[] | select(.name | test("linux-x64-.*\\.tar\\.gz$")) | .browser_download_url')
 TOKEN=$(gh api repos/hunternuga/homelab/actions/runners/registration-token -X POST --jq .token)
-curl -o actions-runner.tar.gz -L https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64.tar.gz
+
+curl -sS -o actions-runner.tar.gz -L "$RUNNER_URL"
 mkdir actions-runner && tar xzf actions-runner.tar.gz -C actions-runner
 cd actions-runner
-./config.sh --url https://github.com/hunternuga/homelab --token "$TOKEN"
+sudo ./bin/installdependencies.sh   # .NET runtime deps config.sh needs
+./config.sh --url https://github.com/hunternuga/homelab --token "$TOKEN" --name "$(hostname)" --unattended
 sudo ./svc.sh install
 sudo ./svc.sh start
 ```
