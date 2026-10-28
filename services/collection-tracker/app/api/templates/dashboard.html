@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+{% block content %}
+{% for series in series_list %}
+  <section class="series-card">
+    <h2>{{ series.name }}</h2>
+
+    {% if series.grid %}
+      <div class="grid">
+        {% for cell in series.grid %}
+          <div class="cell {{ 'owned' if cell.owned else 'missing' }}">
+            {{ '%02d' % cell.number }}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <ul class="item-list">
+        {% for item in series.entries %}
+          <li class="status-{{ item.status }}">
+            <a href="/items/{{ item.id }}/history">{{ item.display_name or item.issue_number }}</a>
+            <span class="badge">{{ item.status.replace('_', ' ') }}</span>
+            {% if item.target_price %}
+              <span class="target">target ${{ item.target_price }}</span>
+            {% endif %}
+            {% if item.notes %}
+              <span class="notes">{{ item.notes }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Alerts</h2>
+{% if alerts %}
+  <ul class="alert-list">
+    {% for a in alerts %}
+      <li class="alert-{{ a.kind }}">
+        <span class="kind">{{ a.kind.replace('_', ' ') }}</span>
+        <span class="detail">{{ a.detail }}</span>
+        <span class="meta">
+          {{ a.created_at.strftime('%Y-%m-%d %H:%M') }}
+          {% if a.notified_at %} · notified{% else %} · not notified{% endif %}
+        </span>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>No alerts yet.</p>
+{% endif %}
+
+<form method="post" action="/test-alert">
+  <button type="submit">Send test notification</button>
+</form>
+{% endblock %}

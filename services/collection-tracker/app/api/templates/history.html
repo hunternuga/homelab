@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+<a href="/">&larr; back</a>
+<h2>{{ item.series_name }} — {{ item.display_name or item.issue_number }}</h2>
+<p>Status: <strong>{{ item.status.replace('_', ' ') }}</strong>
+  {% if item.target_price %} · Target price: ${{ item.target_price }}{% endif %}
+</p>
+
+{% if history %}
+  <table class="history-table">
+    <thead>
+      <tr><th>Checked</th><th>Price</th><th>Source</th><th>Listing</th></tr>
+    </thead>
+    <tbody>
+      {% for row in history %}
+        <tr>
+          <td>{{ row.checked_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>${{ row.price }} {{ row.currency }}</td>
+          <td>{{ row.source }}</td>
+          <td>{% if row.listing_url %}<a href="{{ row.listing_url }}" target="_blank">view</a>{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p>No price history yet.</p>
+{% endif %}
+{% endblock %}
