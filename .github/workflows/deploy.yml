@@ -20,11 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Copies whichever tfvars already exist on the runner — a service
+      # without secrets yet (e.g. collection-tracker, pre-deploy) just fails
+      # its own terraform step later instead of blocking every other
+      # service's deploy here.
       - name: Restore secrets
         run: |
-          cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
-          cp ~/.homelab-secrets/collection-tracker.tfvars services/collection-tracker/terraform.tfvars
-          cp ~/.homelab-secrets/minepanel.tfvars services/minepanel/terraform.tfvars
+          for svc in cloudflared collection-tracker minepanel; do
+            if [ -f ~/.homelab-secrets/$svc.tfvars ]; then
+              cp ~/.homelab-secrets/$svc.tfvars services/$svc/terraform.tfvars
+            fi
+          done
 
       - name: Plan
         run: ./deploy.sh plan
@@ -51,11 +57,17 @@ jobs:
           podman push ghcr.io/hunternuga/collection-tracker:latest
           podman push "ghcr.io/hunternuga/collection-tracker:${GITHUB_SHA::7}"
 
+      # Copies whichever tfvars already exist on the runner — a service
+      # without secrets yet (e.g. collection-tracker, pre-deploy) just fails
+      # its own terraform step later instead of blocking every other
+      # service's deploy here.
       - name: Restore secrets
         run: |
-          cp ~/.homelab-secrets/cloudflared.tfvars services/cloudflared/terraform.tfvars
-          cp ~/.homelab-secrets/collection-tracker.tfvars services/collection-tracker/terraform.tfvars
-          cp ~/.homelab-secrets/minepanel.tfvars services/minepanel/terraform.tfvars
+          for svc in cloudflared collection-tracker minepanel; do
+            if [ -f ~/.homelab-secrets/$svc.tfvars ]; then
+              cp ~/.homelab-secrets/$svc.tfvars services/$svc/terraform.tfvars
+            fi
+          done
 
       - name: Deploy
         run: ./deploy.sh
