@@ -26,7 +26,7 @@ jobs:
       # service's deploy here.
       - name: Restore secrets
         run: |
-          for svc in cloudflared collection-tracker minepanel immich; do
+          for svc in cloudflared collection-tracker minepanel; do
             if [ -f ~/.homelab-secrets/$svc.tfvars ]; then
               cp ~/.homelab-secrets/$svc.tfvars services/$svc/terraform.tfvars
             fi
@@ -63,7 +63,7 @@ jobs:
       # service's deploy here.
       - name: Restore secrets
         run: |
-          for svc in cloudflared collection-tracker minepanel immich; do
+          for svc in cloudflared collection-tracker minepanel; do
             if [ -f ~/.homelab-secrets/$svc.tfvars ]; then
               cp ~/.homelab-secrets/$svc.tfvars services/$svc/terraform.tfvars
             fi
