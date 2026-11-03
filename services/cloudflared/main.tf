@@ -33,19 +33,6 @@ resource "cloudflare_record" "home_assistant" {
 # is the auth boundary here instead; it has IP-ban-after-failed-attempts
 # enabled by default.
 
-resource "cloudflare_record" "jellyfin" {
-  zone_id = var.cloudflare_zone_id
-  name    = "jellyfin"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
-  type    = "CNAME"
-  proxied = true
-}
-
-# No Cloudflare Access here either — same reasoning as Home Assistant.
-# Jellyfin's official TV/mobile/Roku apps make direct API calls that would
-# break on Access's interactive login. Jellyfin's own login is the auth
-# boundary instead.
-
 resource "cloudflare_record" "collection_tracker" {
   zone_id = var.cloudflare_zone_id
   name    = "collection"

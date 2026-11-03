@@ -13,7 +13,6 @@ DIRS=(
   # back once those secrets exist; until then its presence would make
   # every CI deploy fail here and never reach the services below it.
   "$HOMELAB_DIR/services/minepanel"
-  "$HOMELAB_DIR/services/jellyfin"
   "$HOMELAB_DIR/services/cloudflared"
 )
 
@@ -93,7 +92,6 @@ case "${1:-apply}" in
     echo "Deploy complete!"
     echo "  home-assistant -> https://home.nuga.dev"
     echo "  minepanel      -> https://minepanel.nuga.dev"
-    echo "  jellyfin       -> http://<node-lan-ip>:8096 (LAN-only, no Cloudflare route)"
     ;;
 
   destroy)
