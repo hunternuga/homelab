@@ -22,6 +22,7 @@ through Cloudflare Tunnel — no port forwarding required.
 | [Home Assistant](services/home-assistant/) | [home.nuga.dev](https://home.nuga.dev) | Home Assistant login |
 | [Collection Tracker](services/collection-tracker/) | [collection.nuga.dev](https://collection.nuga.dev) | Cloudflare Access |
 | [MinePanel](services/minepanel/) | [minepanel.nuga.dev](https://minepanel.nuga.dev) | Cloudflare Access (frontend) + its own login |
+| [Immich](services/immich/) | [immich.nuga.dev](https://immich.nuga.dev) | Immich's own login |
 
 `nuga.dev` itself (the apex domain) isn't part of this stack — it's routed
 via Cloudflare DNS to a GitHub Pages-hosted portfolio site
@@ -107,6 +108,13 @@ Create `services/minepanel/terraform.tfvars`:
 minepanel_jwt_secret = "$(openssl rand -base64 32)"
 ```
 
+Create `services/immich/terraform.tfvars` (letters/digits only, no special
+characters — Immich's own recommendation for the DB password):
+
+```hcl
+immich_db_password = "$(openssl rand -hex 20)"
+```
+
 **2. Deploy**
 
 ```bash
@@ -156,9 +164,10 @@ sudo ./svc.sh start
 ```
 
 Then create `~/.homelab-secrets/cloudflared.tfvars`,
-`~/.homelab-secrets/collection-tracker.tfvars`, and
-`~/.homelab-secrets/minepanel.tfvars` on the node with the same contents as
-the `terraform.tfvars` files above — the workflow restores these before
+`~/.homelab-secrets/collection-tracker.tfvars`,
+`~/.homelab-secrets/minepanel.tfvars`, and `~/.homelab-secrets/immich.tfvars`
+on the node with the same contents as the `terraform.tfvars` files above —
+the workflow restores these before
 every plan/apply so secrets never touch the repo.
 
 ## External Manual Setup

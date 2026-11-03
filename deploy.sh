@@ -13,6 +13,7 @@ DIRS=(
   # back once those secrets exist; until then its presence would make
   # every CI deploy fail here and never reach the services below it.
   "$HOMELAB_DIR/services/minepanel"
+  "$HOMELAB_DIR/services/immich"
   "$HOMELAB_DIR/services/cloudflared"
 )
 
@@ -92,6 +93,7 @@ case "${1:-apply}" in
     echo "Deploy complete!"
     echo "  home-assistant -> https://home.nuga.dev"
     echo "  minepanel      -> https://minepanel.nuga.dev"
+    echo "  immich         -> https://immich.nuga.dev"
     ;;
 
   destroy)

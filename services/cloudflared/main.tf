@@ -33,6 +33,19 @@ resource "cloudflare_record" "home_assistant" {
 # is the auth boundary here instead; it has IP-ban-after-failed-attempts
 # enabled by default.
 
+resource "cloudflare_record" "immich" {
+  zone_id = var.cloudflare_zone_id
+  name    = "immich"
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.homelab.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+}
+
+# No Cloudflare Access here either — same reasoning as Home Assistant.
+# Immich's phone apps do raw API calls for background photo/video
+# upload, which would break the same way under Access's interactive
+# login. Immich's own account login is the auth boundary instead.
+
 resource "cloudflare_record" "collection_tracker" {
   zone_id = var.cloudflare_zone_id
   name    = "collection"
